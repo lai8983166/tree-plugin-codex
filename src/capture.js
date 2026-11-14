@@ -1,11 +1,12 @@
 import { captureEvent } from './capture-store.js';
 import { syncPending } from './curated-tree.js';
+import { storageRoot } from './storage-root.js';
 let raw = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => { raw += chunk; });
 process.stdin.on('end', async () => {
   try {
-    const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT, input = JSON.parse(raw);
+    const root = storageRoot(), input = JSON.parse(raw);
     const result = await captureEvent(root, input);
     if (!result.ignored) {
       // Reconcile even when the panel is closed. Contention is retried by polling.

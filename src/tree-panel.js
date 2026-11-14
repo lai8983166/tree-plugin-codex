@@ -5,7 +5,7 @@ import styles from './panel.css';
 import pickerStyles from './session-picker.css';
 document.head.insertAdjacentHTML('beforeend', `<style>${styles}${pickerStyles}</style>`);
 document.body.innerHTML = `<main>
-<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.7.0</span></h1></div><span id="connection" class="badge">连接中</span></header>
+<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.8.0</span></h1></div><span id="connection" class="badge">连接中</span></header>
 <div class="subhead"><span id="counts">按大纲组织，按需收录问答</span><span id="sync">等待绑定会话</span></div>
 <p id="thread-binding" role="status">正在绑定当前会话…</p>
 <button id="import-history" disabled>导入历史到未收录列表（不调用模型）</button>
@@ -24,7 +24,7 @@ document.body.innerHTML = `<main>
 <details class="diagnostics"><summary>连接与模型说明</summary><p>采集和历史导入只更新未收录列表。空问答节点绑定下一轮提问，回复完整后填入。智能收录仅对选中问答发起一次后台模型请求，不向当前会话发送消息，不自动重试。</p><pre id="diagnostic"></pre></details>
 </main>`;
 const $ = id => document.getElementById(id);
-const app = new App({ name: 'discussion-tree', version: '0.7.0' });
+const app = new App({ name: 'discussion-tree', version: '0.8.0' });
 let sessionId = null, revision = null, snapshot = null, connected = false, polling = false, timer;
 let selected = null, collapsed = new Set(), scale = 1, graph = null, fitted = false;
 const diag = {};

@@ -1,13 +1,11 @@
 import { build } from 'esbuild';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-const projectRoot = resolve('.').replace(/^\/mnt\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:/`);
 const out = 'plugins/thread-panel-probe/dist';
 await mkdir(out, { recursive: true });
 const ui = await build({ entryPoints: ['src/tree-panel.js'], loader: { '.css': 'text' }, bundle: true, format: 'esm', platform: 'browser', write: false, minify: true });
 const script = ui.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thread Panel Probe</title></head><body><script type="module">${script}</script></body></html>`;
 await writeFile(`${out}/panel.html`, html);
-await build({ entryPoints: ['src/server.js'], outfile: `${out}/server.cjs`, bundle: true, platform: 'node', format: 'cjs', target: 'node20', define: { PROBE_HTML: JSON.stringify(html), PROBE_PROJECT_ROOT: JSON.stringify(projectRoot) } });
-await build({ entryPoints: ['src/capture.js'], outfile: `${out}/capture.cjs`, bundle: true, platform: 'node', format: 'cjs', target: 'node20', define: { PROBE_PROJECT_ROOT: JSON.stringify(projectRoot) } });
+await build({ entryPoints: ['src/server.js'], outfile: `${out}/server.cjs`, bundle: true, platform: 'node', format: 'cjs', target: 'node20', define: { PROBE_HTML: JSON.stringify(html) } });
+await build({ entryPoints: ['src/capture.js'], outfile: `${out}/capture.cjs`, bundle: true, platform: 'node', format: 'cjs', target: 'node20' });
 console.log('Built standalone stdio MCP server + self-contained UI.');

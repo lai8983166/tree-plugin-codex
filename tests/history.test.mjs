@@ -45,7 +45,7 @@ test('history import rebuilds all turns, preserves Markdown, deduplicates hooks 
   await assert.rejects(importHistory(root, '../saved', home), /Invalid/);
   await assert.rejects(parseHistory(file, 'different', root), /不匹配/);
   const other = await mkdtemp(join(tmpdir(), 'other-project-'));
-  await assert.rejects(parseHistory(file, 'saved', other), /不属于/);
+  assert.equal((await parseHistory(file, 'saved', other)).turns.length, 45);
   await writeFile(file, records.map(JSON.stringify).join('\n') + '\n{"unfinished":');
   assert.equal((await importHistory(root, 'saved', home)).partial, true);
   const before = await readFile(join(root, '.probe', 'history', 'saved.json'), 'utf8');

@@ -1,10 +1,11 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "thread-panel-probe",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Outline-based discussion tree with selective Q&A collection.",
   "extensions": {
     "com.openai": {
+      "hooks": "./hooks/hooks.json",
       "interface": {
         "displayName": "讨论树 · Discussion Tree",
         "shortDescription": "Organize learning outlines and selectively collect Q&A",

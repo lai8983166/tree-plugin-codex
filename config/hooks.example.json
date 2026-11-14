@@ -1,22 +1,22 @@
 {
-  "description": "Capture project prompts and final answers locally for Discussion Tree.",
+  "description": "Optional user-level fallback for clients without bundled plugin Hooks. Capture all projects locally, isolated by session ID.",
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{
       "type": "command",
-      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
-      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "command": "node \"<PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
       "timeout": 5
     }] }],
     "Stop": [{ "hooks": [{
       "type": "command",
-      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
-      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "command": "node \"<PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
       "timeout": 5
     }] }],
     "Interrupt": [{ "hooks": [{
       "type": "command",
-      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
-      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "command": "node \"<PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PLUGIN_INSTALL_ROOT>/dist/capture.cjs\"",
       "timeout": 3
     }] }]
   }

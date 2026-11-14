@@ -5,9 +5,10 @@ import { build } from 'esbuild';
 import { getTurn } from '../src/tree-store.js';
 import { readCuratedTree } from '../src/curated-tree.js';
 import { listCapturedSessions } from '../src/capture-store.js';
+import { storageRoot } from '../src/storage-root.js';
 const bundle = await build({ entryPoints: ['scripts/preview-host.js'], bundle: true, format: 'esm', write: false });
 const hostScript = bundle.outputFiles[0].text;
-const root = process.cwd();
+const root = storageRoot();
 createServer(async (req, res) => {
   if (req.headers.host !== '127.0.0.1:4329' || (req.headers.origin && req.headers.origin !== 'http://127.0.0.1:4329')) { res.writeHead(403).end(); return; }
   try {

@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { readdir, realpath, mkdir, writeFile, rename } from 'node:fs/promises';
+import { readdir, mkdir, writeFile, rename } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,7 @@ const messageText = content => typeof content === 'string' ? content : (content 
   .filter(c => ['text', 'Text', 'input_text', 'output_text'].includes(c.type))
   .map(c => c.text ?? '').join('\n');
 
-export async function parseHistory(file, sessionId, root) {
+export async function parseHistory(file, sessionId) {
   const turns = new Map(); let meta, current, broken = false, partial = false;
   const get = (id, at) => {
     if (!validId(id)) return null;
@@ -23,7 +23,10 @@ export async function parseHistory(file, sessionId, root) {
     let record;
     try { record = JSON.parse(line); } catch { broken = true; partial = true; continue; }
     const p = record.payload ?? {}, at = record.timestamp;
-    if (record.type === 'session_meta') { meta = p; continue; }
+    if (record.type === 'session_meta') {
+      if ((!p.id && !p.session_id) || [p.id, p.session_id].some(id => id != null && id !== sessionId)) throw new Error('历史文件会话 ID 不匹配');
+      meta = p; continue;
+    }
     if (record.type === 'turn_context' || (record.type === 'event_msg' && p.type === 'task_started')) current = p.turn_id;
     if (record.type !== 'event_msg' || !['item_completed', 'user_message', 'task_complete', 'turn_aborted'].includes(p.type)) continue;
     if (p.thread_id && p.thread_id !== sessionId) continue;
@@ -42,7 +45,6 @@ export async function parseHistory(file, sessionId, root) {
     turn.updatedAt = at;
   }
   if (!meta || (meta.id ?? meta.session_id) !== sessionId) throw new Error('历史文件会话 ID 不匹配');
-  if (!meta.cwd || await realpath(meta.cwd) !== await realpath(root)) throw new Error('历史会话不属于当前项目');
   const result = [...turns.values()].filter(t => t.prompts.length);
   if (result.some(t => !Number.isFinite(Date.parse(t.firstSeenAt)) || !Number.isFinite(Date.parse(t.updatedAt)))) throw new Error('历史记录缺少有效时间');
   if (!result.length) throw new Error('未找到可导入的用户问答；此历史格式可能不受支持');
@@ -64,7 +66,7 @@ export async function importHistory(root, sessionId, codexHome = process.env.COD
   const files = [...await findHistory(join(codexHome, 'sessions'), sessionId), ...await findHistory(join(codexHome, 'archived_sessions'), sessionId)];
   if (!files.length) throw new Error('找不到该会话的本地历史。仅支持当前机器保存的 Codex 会话。');
   if (files.length !== 1) throw new Error('找到多个同 ID 历史文件，无法安全选择');
-  const data = await parseHistory(files[0], sessionId, root);
+  const data = await parseHistory(files[0], sessionId);
   const dir = join(resolve(root), '.probe', 'history'); await mkdir(dir, { recursive: true });
   const temp = join(dir, `${sessionId}-${randomUUID()}.tmp`);
   await writeFile(temp, JSON.stringify(data), { mode: 0o600 });

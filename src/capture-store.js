@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, realpath, rename, writeFile, access } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile, access } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 export const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
@@ -22,8 +22,6 @@ export async function captureEvent(root, input) {
   if (!['UserPromptSubmit', 'Stop', 'Interrupt'].includes(event)) return { ignored: 'event' };
   if (!validId(input.session_id) || !validId(input.turn_id)) throw new Error('Invalid session_id or turn_id');
   if (typeof input.cwd !== 'string') throw new Error('Missing cwd');
-  const [expected, actual] = await Promise.all([realpath(root), realpath(input.cwd)]);
-  if (expected !== actual) return { ignored: 'outside-project' };
   const text = event === 'UserPromptSubmit' ? input.prompt : event === 'Stop' ? input.last_assistant_message : null;
   if (text != null && typeof text !== 'string') throw new Error('Expected text or null');
   const record = {

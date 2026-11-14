@@ -7,10 +7,11 @@ import { readCuratedTree, createOutline, armChild, cancelPending, smartCollect }
 import { prepareQaFile } from './qa-file.js';
 import { resolveThreadSession } from './thread-context.js';
 import { importHistory } from './history-import.js';
+import { storageRoot } from './storage-root.js';
 
-const uri = 'ui://thread-panel-probe/v8.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.7.0' });
-const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
+const uri = 'ui://thread-panel-probe/v9.html';
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.8.0' });
+const root = storageRoot();
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true };
 const ui = { resourceUri: uri };
@@ -49,7 +50,7 @@ server.registerTool('open_thread_panel_probe', {
 }, async ({ session_id }, extra) => {
   const boundSession = resolveThreadSession(session_id, extra?._meta);
   return { content: [{ type: 'text', text: boundSession ? 'Discussion tree bound to the current conversation without a model call.' : 'The host did not supply a current conversation ID. No session was selected automatically.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.7.0', requestedEntrypoint: 'thread', sessionId: boundSession } };
+    structuredContent: { probe: 'thread-panel-probe', version: '0.8.0', requestedEntrypoint: 'thread', sessionId: boundSession } };
 });
 
 server.registerTool('list_captured_sessions', {

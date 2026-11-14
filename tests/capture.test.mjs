@@ -34,5 +34,7 @@ test('hook executable captures Q&A, deduplicates, isolates sessions and marks in
   assert.equal(snapshot.turns.find(t => t.turnId === 'turn-3').status, 'interrupted');
   await assert.rejects(readSnapshot(root, '../escape'));
   const other = await mkdtemp(join(tmpdir(), 'thread-probe-other-'));
-  assert.deepEqual(await captureEvent(root, { cwd: other, session_id: 'session-a', turn_id: 'turn-4', hook_event_name: 'Stop', last_assistant_message: 'outside' }), { ignored: 'outside-project' });
+  assert.deepEqual(await captureEvent(root, { cwd: other, session_id: 'session-b', turn_id: 'turn-4', hook_event_name: 'Stop', last_assistant_message: 'other project' }), { captured: true });
+  assert.equal((await readSnapshot(root, 'session-b')).turns[0].answer, 'other project');
+  assert.equal((await readSnapshot(root, 'session-a')).totalTurns, 3);
 });
