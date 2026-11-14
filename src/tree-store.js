@@ -76,13 +76,15 @@ export async function retryFailed(root, sessionId) {
   finally { await rm(lock, { recursive: true, force: true }); }
 }
 export function createCoordinator(root, classify) {
-  const sessions = new Set(); let running = false, stopped = false;
+  const sessions = new Set(); let running = false, stopped = false, active = null;
   async function tick() {
     if (running || stopped) return;
     running = true;
-    try { for (const id of sessions) { try { await classifyNext(root, id, classify); } catch (error) { console.error('Tree worker:', error.message); } } }
+    try { for (const id of sessions) { active = id; try { await classifyNext(root, id, classify); } catch (error) { console.error('Tree worker:', error.message); } finally { active = null; } } }
     finally { running = false; }
   }
   const timer = setInterval(tick, 2000); timer.unref();
-  return { track(id) { if (!validId(id)) throw new Error('Invalid session ID'); sessions.add(id); void tick(); }, close() { stopped = true; clearInterval(timer); } };
+  return { track(id) { if (!validId(id)) throw new Error('Invalid session ID'); sessions.add(id); void tick(); },
+    pause(id) { sessions.delete(id); if (active === id) throw new Error('已暂停后续归类；当前归类尚未结束，请稍后再次导入'); },
+    close() { stopped = true; clearInterval(timer); } };
 }

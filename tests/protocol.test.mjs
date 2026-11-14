@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { mkdtemp, writeFile, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { captureEvent } from '../src/capture-store.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -14,7 +14,13 @@ test('opening and polling a captured session never starts the enabled model coor
   await writeFile(fakeCli, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'called');`);
   await captureEvent(root, { cwd: root, session_id: 'saved', turn_id: 'one', hook_event_name: 'UserPromptSubmit', prompt: 'test question' });
   await captureEvent(root, { cwd: root, session_id: 'saved', turn_id: 'one', hook_event_name: 'Stop', last_assistant_message: 'test answer' });
-  const transport = new StdioClientTransport({ command: process.execPath, args: [resolve('plugins/thread-panel-probe/dist/server.cjs')], env: { ...process.env, PROBE_PROJECT_ROOT: root, TREE_MODEL_DISABLED: '0', TREE_CODEX_CLI: fakeCli }, stderr: 'pipe' });
+  const home = resolve(root, 'codex'); await mkdir(resolve(home, 'sessions'), { recursive: true });
+  await writeFile(resolve(home, 'sessions', 'rollout-date-saved.jsonl'), [
+    { type: 'session_meta', payload: { id: 'saved', cwd: root } },
+    { type: 'event_msg', timestamp: '2026-01-01T00:00:00.000Z', payload: { type: 'user_message', turn_id: 'older', message: 'old question' } },
+    { type: 'event_msg', timestamp: '2026-01-01T00:00:01.000Z', payload: { type: 'task_complete', turn_id: 'older', last_agent_message: 'old answer' } }
+  ].map(JSON.stringify).join('\n'));
+  const transport = new StdioClientTransport({ command: process.execPath, args: [resolve('plugins/thread-panel-probe/dist/server.cjs')], env: { ...process.env, PROBE_PROJECT_ROOT: root, CODEX_HOME: home, TREE_MODEL_DISABLED: '0', TREE_CODEX_CLI: fakeCli }, stderr: 'pipe' });
   const client = new Client({ name: 'no-model-test', version: '1.0.0' });
   try {
     await client.connect(transport);
@@ -22,11 +28,16 @@ test('opening and polling a captured session never starts the enabled model coor
     await client.callTool({ name: 'list_captured_sessions', arguments: {} });
     await client.callTool({ name: 'read_discussion_tree', arguments: { session_id: 'saved' } });
     await client.callTool({ name: 'prepare_qa_file', arguments: { session_id: 'saved', turn_id: 'one' } });
+    const imported = await client.callTool({ name: 'import_current_history', arguments: { session_id: 'saved' } });
+    assert.equal(imported.structuredContent.importedTurns, 1);
+    const conflict = await client.callTool({ name: 'import_current_history', arguments: { session_id: 'saved' }, _meta: { 'x-codex-turn-metadata': { thread_id: 'other' } } });
+    assert.equal(conflict.isError, true);
     // Cross a coordinator timer tick with classification enabled and pending data.
     await new Promise(resolve => setTimeout(resolve, 2200));
     await assert.rejects(access(marker), { code: 'ENOENT' });
     const tree = await client.callTool({ name: 'read_discussion_tree', arguments: { session_id: 'saved' } });
     assert.equal(tree.structuredContent.nodes[0].classification, 'pending');
+    assert.equal(tree.structuredContent.nodes.length, 2);
   } finally { await client.close(); }
 });
 

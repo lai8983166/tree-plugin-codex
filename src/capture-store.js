@@ -6,10 +6,13 @@ export const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,1
 export async function listCapturedSessions(root) {
   let entries;
   try { entries = await readdir(join(resolve(root), '.probe', 'events'), { withFileTypes: true }); }
-  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
-  const sessions = await Promise.all(entries.filter(e => e.isDirectory() && validId(e.name)).map(async e => {
-    const snapshot = await readSnapshot(root, e.name, { limit: 1 });
-    return { sessionId: e.name, totalTurns: snapshot.totalTurns, updatedAt: snapshot.lastEventAt,
+  catch (error) { if (error.code === 'ENOENT') entries = []; else throw error; }
+  const ids = new Set(entries.filter(e => e.isDirectory() && validId(e.name)).map(e => e.name));
+  try { for (const file of await readdir(join(resolve(root), '.probe', 'history'))) if (file.endsWith('.json') && validId(file.slice(0, -5))) ids.add(file.slice(0, -5)); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const sessions = await Promise.all([...ids].map(async id => {
+    const snapshot = await readSnapshot(root, id, { limit: 1 });
+    return { sessionId: id, totalTurns: snapshot.totalTurns, updatedAt: snapshot.lastEventAt,
       label: snapshot.turns[0]?.prompts.filter(Boolean).join(' ').slice(0, 60) || '未捕获提问' };
   }));
   return sessions.filter(s => s.totalTurns > 0).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -57,10 +60,20 @@ export async function readSnapshot(root, sessionId, { limit = 30 } = {}) {
     if (record.event === 'Interrupt') turn.status = 'interrupted';
     turn.updatedAt = record.capturedAt;
   }
-  const turns = [...grouped.values()];
-  const revision = createHash('sha256').update(JSON.stringify(records)).digest('hex');
+  let history = { turns: [] };
+  try { history = JSON.parse(await readFile(join(resolve(root), '.probe', 'history', `${sessionId}.json`), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  for (const saved of history.turns) {
+    const live = grouped.get(saved.turnId);
+    const prompts = [...saved.prompts];
+    for (const prompt of live?.prompts ?? []) if (!prompts.some(p => p?.trim() === prompt?.trim())) prompts.push(prompt);
+    grouped.set(saved.turnId, { ...saved, ...(live && live.updatedAt >= saved.updatedAt ? live : {}), prompts,
+      firstSeenAt: saved.firstSeenAt < (live?.firstSeenAt ?? saved.firstSeenAt) ? saved.firstSeenAt : (live?.firstSeenAt ?? saved.firstSeenAt) });
+  }
+  const turns = [...grouped.values()].sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt));
+  const revision = createHash('sha256').update(JSON.stringify(turns)).digest('hex');
   return { sessionId, revision, eventCount: records.length, totalTurns: turns.length,
     completedTurns: turns.filter(t => t.status === 'completed').length,
     // Bound the panel response; all records remain on disk for this probe.
-    turns: limit === null ? turns : turns.slice(-limit), lastEventAt: records.at(-1)?.capturedAt ?? null };
+    turns: limit === null ? turns : turns.slice(-limit), lastEventAt: turns.map(t => t.updatedAt).sort().at(-1) ?? null };
 }

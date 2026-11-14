@@ -5,14 +5,27 @@ import { readSnapshot, listCapturedSessions } from './capture-store.js';
 import { readTree, getTurn, retryFailed, createCoordinator } from './tree-store.js';
 import { prepareQaFile } from './qa-file.js';
 import { resolveThreadSession } from './thread-context.js';
+import { importHistory } from './history-import.js';
 
-const uri = 'ui://thread-panel-probe/v6.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.5.1' });
+const uri = 'ui://thread-panel-probe/v7.html';
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.6.0' });
 const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
-const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, close() {} } : createCoordinator(root);
+const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, pause() {}, close() {} } : createCoordinator(root);
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true };
 const ui = { resourceUri: uri };
+
+server.registerTool('import_current_history', {
+  title: 'Import current conversation history',
+  description: 'Import saved local user questions and final answers, rebuild local nodes, and pause automatic classification. Never calls a model.',
+  inputSchema: { session_id: sessionId }, annotations: { ...annotations, readOnlyHint: false },
+  _meta: { ui: { visibility: ['app'] } }
+}, async ({ session_id }, extra) => {
+  const id = resolveThreadSession(session_id, extra?._meta);
+  coordinator.pause(id);
+  const imported = await importHistory(root, id);
+  return { content: [{ type: 'text', text: 'Local history imported; model classification is paused.' }], structuredContent: imported };
+});
 
 server.registerTool('prepare_qa_file', {
   title: 'Open saved Q&A', description: 'Prepare a stable local file containing the complete captured Q&A. Does not call a model or start classification.',
@@ -37,7 +50,7 @@ server.registerTool('open_thread_panel_probe', {
 }, async ({ session_id }, extra) => {
   const boundSession = resolveThreadSession(session_id, extra?._meta);
   return { content: [{ type: 'text', text: boundSession ? 'Discussion tree bound to the current conversation without a model call.' : 'The host did not supply a current conversation ID. No session was selected automatically.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.5.1', requestedEntrypoint: 'thread', sessionId: boundSession } };
+    structuredContent: { probe: 'thread-panel-probe', version: '0.6.0', requestedEntrypoint: 'thread', sessionId: boundSession } };
 });
 
 server.registerTool('list_captured_sessions', {
