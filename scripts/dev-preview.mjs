@@ -2,7 +2,8 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
-import { readTree, getTurn } from '../src/tree-store.js';
+import { getTurn } from '../src/tree-store.js';
+import { readCuratedTree } from '../src/curated-tree.js';
 import { listCapturedSessions } from '../src/capture-store.js';
 const bundle = await build({ entryPoints: ['scripts/preview-host.js'], bundle: true, format: 'esm', write: false });
 const hostScript = bundle.outputFiles[0].text;
@@ -15,7 +16,7 @@ createServer(async (req, res) => {
       let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 10000) throw new Error('Too large'); }
       const { name, arguments: args } = JSON.parse(raw);
       let data;
-      if (name === 'read_discussion_tree') data = await readTree(root, args.session_id);
+      if (name === 'read_discussion_tree') data = await readCuratedTree(root, args.session_id, { sync: false });
       else if (name === 'list_captured_sessions') data = { sessions: await listCapturedSessions(root) };
       else if (name === 'get_turn_detail') data = { turn: await getTurn(root, args.session_id, args.turn_id) };
       else throw new Error('Read-only preview');

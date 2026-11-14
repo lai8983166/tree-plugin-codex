@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { captureEvent, readSnapshot } from '../src/capture-store.js';
+import { createOutline, armChild, cancelPending, smartCollect, readCuratedTree, parseOutline } from '../src/curated-tree.js';
+import { layoutTree } from '../src/tree-layout.js';
+
+test('outline categories, next-turn binding via hook while panel closed, interruption and rebuild', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'curated-'));
+  const capture = (turn, event, text) => captureEvent(root, { cwd: root, session_id: 's', turn_id: turn, hook_event_name: event, prompt: text, last_assistant_message: text });
+  await capture('old', 'UserPromptSubmit', 'Old question'); await capture('old', 'Stop', 'Old answer');
+  assert.equal((await readCuratedTree(root, 's')).nodes.length, 0);
+  await createOutline(root, 's', '- Learning\n  - Basics\n  - Practice');
+  let tree = await readCuratedTree(root, 's');
+  assert.equal(tree.nodes[1].parentId, tree.nodes[0].id);
+  assert.ok(tree.nodes.every(n => n.kind === 'category' && !n.turnId));
+  assert.equal(layoutTree(tree.nodes).edges.length, 3);
+  const pending = await armChild(root, 's', tree.nodes[1].id);
+  await assert.rejects(armChild(root, 's', 'root'), /已有/);
+  const hook = (turn, event, text) => {
+    const result = spawnSync(process.execPath, [resolve('plugins/thread-panel-probe/dist/capture.cjs')], { encoding: 'utf8', env: { ...process.env, PROBE_PROJECT_ROOT: root }, input: JSON.stringify({ cwd: root, session_id: 's', turn_id: turn, hook_event_name: event, prompt: text, last_assistant_message: text }) });
+    assert.equal(result.status, 0); assert.equal(result.stderr, '');
+  };
+  hook('new', 'UserPromptSubmit', 'New question');
+  let disk = JSON.parse(await readFile(join(root, '.probe', 'curated', 's.json')));
+  assert.equal(disk.pending.turnId, 'new'); assert.equal(disk.nodes.at(-1).turnId, null);
+  hook('new', 'Stop', 'Full **Markdown** answer');
+  disk = JSON.parse(await readFile(join(root, '.probe', 'curated', 's.json')));
+  assert.equal(disk.pending, null); assert.equal(disk.nodes.at(-1).id, pending.nodeId); assert.equal(disk.nodes.at(-1).turnId, 'new');
+  hook('ignored', 'UserPromptSubmit', 'Do not auto-collect'); hook('ignored', 'Stop', 'Answer');
+  tree = await readCuratedTree(root, 's'); assert.equal(tree.nodes.length, 4); assert.equal(tree.uncollected.length, 2);
+  await armChild(root, 's', pending.nodeId);
+  hook('aborted', 'UserPromptSubmit', 'Interrupted'); hook('aborted', 'Interrupt');
+  hook('later', 'UserPromptSubmit', 'Later'); hook('later', 'Stop', 'Later answer');
+  tree = await readCuratedTree(root, 's'); assert.equal(tree.pending.turnId, 'aborted'); assert.equal(tree.nodes.at(-1).turnId, null);
+  await cancelPending(root, 's'); assert.equal((await readCuratedTree(root, 's')).nodes.length, 4);
+  await createOutline(root, 's', '# New outline\n## Subtopic', true);
+  tree = await readCuratedTree(root, 's'); assert.equal(tree.nodes.length, 2); assert.equal(tree.uncollected.length, 5);
+  assert.equal((await readSnapshot(root, 's')).totalTurns, 5);
+  assert.equal((await readCuratedTree(root, 'other')).nodes.length, 0);
+  assert.throws(() => parseOutline('- A\n    - Skipped level'), /跳级/);
+  assert.throws(() => parseOutline(''), /大纲/);
+});
+
+test('smart collection makes exactly one request, validates parents, rejects duplicates and never retries', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'smart-'));
+  await createOutline(root, 's', '- Topic');
+  for (const id of ['a', 'b', 'c']) for (const event of ['UserPromptSubmit', 'Stop']) await captureEvent(root, { cwd: root, session_id: 's', turn_id: id, hook_event_name: event, prompt: id, last_assistant_message: '**full** answer' });
+  const parent = (await readCuratedTree(root, 's')).nodes[0].id;
+  let calls = 0;
+  const classify = async (turn, candidates) => { calls++; assert.equal(turn.answer, '**full** answer'); assert.equal(candidates[0].kind, 'category'); return { title: 'Question title', summary: 'Summary', parentId: parent, relation: '解释', reason: 'Fits topic' }; };
+  await smartCollect(root, 's', 'a', classify);
+  assert.equal(calls, 1);
+  await assert.rejects(smartCollect(root, 's', 'a', classify), /已收录/); assert.equal(calls, 1);
+  await assert.rejects(smartCollect(root, 's', 'b', async () => { calls++; throw new Error('offline'); }), /offline/);
+  await readCuratedTree(root, 's'); await readCuratedTree(root, 's'); assert.equal(calls, 2);
+  await assert.rejects(smartCollect(root, 's', 'b', async () => ({ title: 'Title', summary: 'Summary', parentId: 'invalid', relation: '解释', reason: 'Reason' })), /非法父节点/);
+  let release, started;
+  const waiting = new Promise(r => { release = r; }), began = new Promise(r => { started = r; });
+  const task = smartCollect(root, 's', 'b', async (...args) => { started(); await waiting; return classify(...args); });
+  await began;
+  await assert.rejects(smartCollect(root, 's', 'b', classify), /正在更新/);
+  release(); await task;
+  const tree = await readCuratedTree(root, 's'); assert.equal(tree.nodes.length, 3); assert.equal(tree.uncollected.length, 1);
+});

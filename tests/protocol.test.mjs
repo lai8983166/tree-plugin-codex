@@ -36,8 +36,8 @@ test('opening and polling a captured session never starts the enabled model coor
     await new Promise(resolve => setTimeout(resolve, 2200));
     await assert.rejects(access(marker), { code: 'ENOENT' });
     const tree = await client.callTool({ name: 'read_discussion_tree', arguments: { session_id: 'saved' } });
-    assert.equal(tree.structuredContent.nodes[0].classification, 'pending');
-    assert.equal(tree.structuredContent.nodes.length, 2);
+    assert.equal(tree.structuredContent.nodes.length, 0);
+    assert.equal(tree.structuredContent.uncollected.length, 2);
   } finally { await client.close(); }
 });
 
@@ -85,8 +85,15 @@ test('packaged MCP: discover thread entrypoint, read UI, call tools, reject inva
     const unchanged = await client.callTool({ name: 'read_captured_turns', arguments: { session_id: 'live-test', revision: updated.structuredContent.revision } });
     assert.equal(unchanged.structuredContent.unchanged, true);
     const tree = await client.callTool({ name: 'read_discussion_tree', arguments: { session_id: 'live-test' } });
-    assert.equal(tree.structuredContent.nodes.length, 1);
-    assert.equal(tree.structuredContent.nodes[0].classification, 'pending');
+    assert.equal(tree.structuredContent.nodes.length, 0);
+    assert.equal(tree.structuredContent.uncollected.length, 1);
+    assert.equal(tools.some(t => t.name === 'retry_tree_classification'), false);
+    const outline = await client.callTool({ name: 'create_outline', arguments: { session_id: 'live-test', outline: '- Topic\n  - Concepts' } });
+    assert.equal(outline.structuredContent.created, 2);
+    const curated = await client.callTool({ name: 'read_discussion_tree', arguments: { session_id: 'live-test' } });
+    assert.equal(curated.structuredContent.nodes.length, 2);
+    const armed = await client.callTool({ name: 'arm_qa_child', arguments: { session_id: 'live-test', parent_id: curated.structuredContent.nodes[1].id } });
+    assert.ok(armed.structuredContent.nodeId);
     const detail = await client.callTool({ name: 'get_turn_detail', arguments: { session_id: 'live-test', turn_id: 'turn-1' } });
     assert.equal(detail.structuredContent.turn.answer, 'world');
     const qaTool = tools.find(t => t.name === 'prepare_qa_file');

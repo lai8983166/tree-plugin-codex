@@ -1,9 +1,9 @@
 export function layoutTree(items, collapsed = new Set()) {
   const root = { id: 'root', title: '本次讨论', children: [] };
-  const map = new Map([['root', root], ...items.map(n => [n.turnId, { ...n, id: n.turnId, children: [] }])]);
+  const map = new Map([['root', root], ...items.map(n => [n.id ?? n.turnId, { ...n, id: n.id ?? n.turnId, children: [] }])]);
   for (const item of items) {
-    const node = map.get(item.turnId);
-    let parent = item.classification === 'ready' ? map.get(item.parentId) : root;
+    const node = map.get(item.id ?? item.turnId);
+    let parent = item.kind || item.classification === 'ready' ? map.get(item.parentId) : root;
     // Defensive render guard for corrupt persisted data.
     const seen = new Set([node.id]); let cursor = parent;
     while (cursor && cursor.id !== 'root') { if (seen.has(cursor.id)) { parent = root; break; } seen.add(cursor.id); cursor = map.get(cursor.parentId); }
@@ -17,7 +17,7 @@ export function layoutTree(items, collapsed = new Set()) {
     node.x = 24 + depth * 290;
     node.y = rendered.length ? (rendered[0].y + rendered.at(-1).y) / 2 : 24 + leaf++ * 108;
     node.childCount = node.children.length; nodes.push(node);
-    for (const child of rendered) edges.push({ from: node, to: child, provisional: child.classification !== 'ready' });
+    for (const child of rendered) edges.push({ from: node, to: child, provisional: child.kind ? child.kind === 'qa' && !child.turnId : child.classification !== 'ready' });
     return node;
   }
   visit(root, 0);

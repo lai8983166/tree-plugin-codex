@@ -2,29 +2,28 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { readSnapshot, listCapturedSessions } from './capture-store.js';
-import { readTree, getTurn, retryFailed, createCoordinator } from './tree-store.js';
+import { getTurn } from './tree-store.js';
+import { readCuratedTree, createOutline, armChild, cancelPending, smartCollect } from './curated-tree.js';
 import { prepareQaFile } from './qa-file.js';
 import { resolveThreadSession } from './thread-context.js';
 import { importHistory } from './history-import.js';
 
-const uri = 'ui://thread-panel-probe/v7.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.6.0' });
+const uri = 'ui://thread-panel-probe/v8.html';
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.7.0' });
 const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
-const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, pause() {}, close() {} } : createCoordinator(root);
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true };
 const ui = { resourceUri: uri };
 
 server.registerTool('import_current_history', {
   title: 'Import current conversation history',
-  description: 'Import saved local user questions and final answers, rebuild local nodes, and pause automatic classification. Never calls a model.',
+  description: 'Import saved local user questions and final answers into the uncollected pool. Does not create nodes or call a model.',
   inputSchema: { session_id: sessionId }, annotations: { ...annotations, readOnlyHint: false },
   _meta: { ui: { visibility: ['app'] } }
 }, async ({ session_id }, extra) => {
   const id = resolveThreadSession(session_id, extra?._meta);
-  coordinator.pause(id);
   const imported = await importHistory(root, id);
-  return { content: [{ type: 'text', text: 'Local history imported; model classification is paused.' }], structuredContent: imported };
+  return { content: [{ type: 'text', text: 'Local history imported into uncollected Q&A.' }], structuredContent: imported };
 });
 
 server.registerTool('prepare_qa_file', {
@@ -50,7 +49,7 @@ server.registerTool('open_thread_panel_probe', {
 }, async ({ session_id }, extra) => {
   const boundSession = resolveThreadSession(session_id, extra?._meta);
   return { content: [{ type: 'text', text: boundSession ? 'Discussion tree bound to the current conversation without a model call.' : 'The host did not supply a current conversation ID. No session was selected automatically.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.6.0', requestedEntrypoint: 'thread', sessionId: boundSession } };
+    structuredContent: { probe: 'thread-panel-probe', version: '0.7.0', requestedEntrypoint: 'thread', sessionId: boundSession } };
 });
 
 server.registerTool('list_captured_sessions', {
@@ -59,11 +58,11 @@ server.registerTool('list_captured_sessions', {
 }, async () => ({ content: [{ type: 'text', text: 'Local sessions loaded' }], structuredContent: { sessions: await listCapturedSessions(root) } }));
 
 server.registerTool('read_discussion_tree', {
-  title: 'Read discussion tree', description: 'Read node titles, model-selected relationships, and classification status for the bound session.',
-  inputSchema: { session_id: sessionId, revision: z.string().optional() }, annotations,
+  title: 'Read discussion tree', description: 'Synchronize the explicitly armed question node and read curated categories, collected nodes and uncollected Q&A. Never calls a model.',
+  inputSchema: { session_id: sessionId, revision: z.string().optional() }, annotations: { ...annotations, readOnlyHint: false },
   _meta: { ui: { visibility: ['app'] } }
 }, async ({ session_id, revision }) => {
-  const tree = await readTree(root, session_id);
+  const tree = await readCuratedTree(root, session_id);
   return { content: [{ type: 'text', text: `${tree.totalTurns} discussion nodes` }], structuredContent: tree.revision === revision ? { unchanged: true, sessionId: session_id, revision } : tree };
 });
 server.registerTool('get_turn_detail', {
@@ -71,11 +70,17 @@ server.registerTool('get_turn_detail', {
   inputSchema: { session_id: sessionId, turn_id: sessionId }, annotations,
   _meta: { ui: { visibility: ['app'] } }
 }, async ({ session_id, turn_id }) => ({ content: [{ type: 'text', text: 'Complete Q&A loaded' }], structuredContent: { turn: await getTurn(root, session_id, turn_id) } }));
-server.registerTool('retry_tree_classification', {
-  title: 'Retry failed classifications', description: 'Clear failed classification states and retry using the locally signed-in Codex model. Consumes model usage.',
-  inputSchema: { session_id: sessionId }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
-  _meta: { ui: { visibility: ['app'] } }
-}, async ({ session_id }) => { await retryFailed(root, session_id); coordinator.track(session_id); return { content: [{ type: 'text', text: 'Retry queued' }], structuredContent: { queued: true } }; });
+for (const [name, description, schema, run] of [
+  ['create_outline', 'Create category nodes from an outline; no model call.', { outline: z.string().max(30000), replace: z.boolean().optional() }, (id, a) => createOutline(root, id, a.outline, a.replace)],
+  ['arm_qa_child', 'Create an empty child and bind the next new question and complete reply; no model call.', { parent_id: sessionId }, (id, a) => armChild(root, id, a.parent_id)],
+  ['cancel_pending_node', 'Remove the empty pending node without removing saved Q&A.', {}, id => cancelPending(root, id)],
+  ['smart_collect_turn', 'Make one independent background model request for this uncollected Q&A title and parent. Consumes model usage; never sends a chat message.', { turn_id: sessionId }, (id, a) => {
+    if (process.env.TREE_MODEL_DISABLED === '1') throw new Error('模型调用已禁用');
+    return smartCollect(root, id, a.turn_id);
+  }]
+]) server.registerTool(name, { title: name, description, inputSchema: { session_id: sessionId, ...schema }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false }, _meta: { ui: { visibility: ['app'] } } }, async (args, extra) => ({
+  content: [{ type: 'text', text: 'Discussion tree updated' }], structuredContent: await run(resolveThreadSession(args.session_id, extra?._meta), args)
+}));
 
 server.registerTool('read_captured_turns', {
   title: 'Read captured turns',
