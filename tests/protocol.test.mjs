@@ -38,7 +38,7 @@ test('packaged MCP: discover thread entrypoint, read UI, call tools, reject inva
     await client.connect(transport);
     const { tools } = await client.listTools();
     const open = tools.find(t => t.name === 'open_thread_panel_probe');
-    assert.deepEqual(open._meta['openai/ui'].entrypoints, [{ type: 'global' }, { type: 'thread' }]);
+    assert.deepEqual(open._meta['openai/ui'].entrypoints, [{ type: 'thread' }]);
     assert.equal(open.annotations.readOnlyHint, true);
     const { contents } = await client.readResource({ uri: open._meta.ui.resourceUri });
     assert.equal(contents[0].mimeType, 'text/html;profile=mcp-app');
@@ -46,6 +46,11 @@ test('packaged MCP: discover thread entrypoint, read UI, call tools, reject inva
     assert.match(contents[0].text, /ui\/initialize/);
     const result = await client.callTool({ name: open.name, arguments: {} });
     assert.equal(result.structuredContent.sessionId, null);
+    const hostBound = await client.callTool({ name: open.name, arguments: {}, _meta: { 'x-codex-turn-metadata': { thread_id: 'host-thread' } } });
+    assert.equal(hostBound.structuredContent.sessionId, 'host-thread');
+    assert.equal(hostBound.structuredContent.requestedEntrypoint, 'thread');
+    const conflict = await client.callTool({ name: open.name, arguments: { session_id: 'wrong-thread' }, _meta: { 'x-codex-turn-metadata': { thread_id: 'host-thread' } } });
+    assert.equal(conflict.isError, true);
     const emptyList = await client.callTool({ name: 'list_captured_sessions', arguments: {} });
     assert.deepEqual(emptyList.structuredContent.sessions, []);
     const ping = await client.callTool({ name: 'probe_ping', arguments: { nonce: 'round-trip-test' } });

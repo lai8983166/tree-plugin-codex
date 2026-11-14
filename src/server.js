@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { readSnapshot, listCapturedSessions } from './capture-store.js';
 import { readTree, getTurn, retryFailed, createCoordinator } from './tree-store.js';
 import { prepareQaFile } from './qa-file.js';
+import { resolveThreadSession } from './thread-context.js';
 
-const uri = 'ui://thread-panel-probe/v5.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.5.0' });
+const uri = 'ui://thread-panel-probe/v6.html';
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.5.1' });
 const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
 const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, close() {} } : createCoordinator(root);
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -30,12 +31,13 @@ server.registerResource('probe-panel', uri, { mimeType: 'text/html;profile=mcp-a
 
 server.registerTool('open_thread_panel_probe', {
   title: '讨论树',
-  description: 'Open the discussion tree without calling a model. With no session_id, show a local session picker. Never choose another session automatically.',
+  description: 'Open the discussion tree beside the current conversation without calling a model. Bind using host request thread metadata or an explicit current session_id. Never infer the session from recent captures.',
   inputSchema: { session_id: sessionId.optional() }, annotations,
-  _meta: { ui, 'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] } }
-}, async ({ session_id }) => {
-  return { content: [{ type: 'text', text: 'Discussion tree opened without a model call. Choose a captured session to view saved nodes and Q&A.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.5.0', requestedEntrypoint: session_id ? 'thread' : 'global', sessionId: session_id ?? null } };
+  _meta: { ui, 'openai/ui': { entrypoints: [{ type: 'thread' }] } }
+}, async ({ session_id }, extra) => {
+  const boundSession = resolveThreadSession(session_id, extra?._meta);
+  return { content: [{ type: 'text', text: boundSession ? 'Discussion tree bound to the current conversation without a model call.' : 'The host did not supply a current conversation ID. No session was selected automatically.' }],
+    structuredContent: { probe: 'thread-panel-probe', version: '0.5.1', requestedEntrypoint: 'thread', sessionId: boundSession } };
 });
 
 server.registerTool('list_captured_sessions', {

@@ -5,9 +5,10 @@ import styles from './panel.css';
 import pickerStyles from './session-picker.css';
 document.head.insertAdjacentHTML('beforeend', `<style>${styles}${pickerStyles}</style>`);
 document.body.innerHTML = `<main>
-<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.5.0</span></h1></div><span id="connection" class="badge">连接中</span></header>
+<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.5.1</span></h1></div><span id="connection" class="badge">连接中</span></header>
 <div class="subhead"><span id="counts">每轮问答，成为一个节点</span><span id="sync">等待绑定会话</span></div>
-<div class="session-picker"><label for="session-picker">本地会话</label><select id="session-picker"><option value="">请选择会话</option></select><button id="refresh-sessions">刷新列表</button><button id="classify" disabled>启用模型归类（消耗额度）</button></div>
+<p id="thread-binding" role="status">正在绑定当前会话…</p>
+<details id="manual-session"><summary>手动指定会话（宿主未提供会话信息时使用）</summary><div class="session-picker"><label for="session-picker">本地会话</label><select id="session-picker"><option value="">请选择会话</option></select><button id="refresh-sessions">刷新列表</button></div></details><button id="classify" disabled>启用模型归类（消耗额度）</button>
 <div class="workspace"><section class="map-section" aria-label="讨论树画布">
 <div class="toolbar"><div class="segmented"><button id="zoom-out" aria-label="缩小">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="放大">＋</button></div><button id="fit">适应画布</button><button id="expand">展开全部</button><button id="retry" hidden>重试失败节点</button></div>
 <div id="viewport" tabindex="0" aria-label="可滚动的树形图"><div id="extent"><div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="nodes"></div></div></div></div>
@@ -17,7 +18,7 @@ document.body.innerHTML = `<main>
 <details class="diagnostics"><summary>连接与模型说明</summary><p>打开入口、选择会话和查看问答只读本地数据，不调用模型。每 2 秒读取新问答；只有明确点击“启用模型归类”或“重试失败节点”才启动模型，之后服务存活期间会自动归类该会话的新节点并消耗额度。未归类节点的虚线不代表模型关系。</p><pre id="diagnostic"></pre></details>
 </main>`;
 const $ = id => document.getElementById(id);
-const app = new App({ name: 'discussion-tree', version: '0.5.0' });
+const app = new App({ name: 'discussion-tree', version: '0.5.1' });
 let sessionId = null, revision = null, snapshot = null, connected = false, polling = false, timer;
 let selected = null, collapsed = new Set(), scale = 1, graph = null, fitted = false;
 const diag = {};
@@ -151,6 +152,8 @@ app.ontoolresult = result => {
   const data = result.structuredContent;
   if (data?.probe !== 'thread-panel-probe') return;
   bindSession(data.sessionId);
+  $('thread-binding').textContent = data.sessionId ? '已绑定当前会话' : '宿主未提供当前会话 ID，暂时无法自动加载。可展开下方手动指定会话。';
+  $('manual-session').hidden = Boolean(data.sessionId);
   $('sync').textContent = sessionId ? '同步中…' : '请选择本地会话'; report(); refreshSessions(); poll();
 };
 app.onhostcontextchanged = ctx => { diag.displayMode = ctx.displayMode; if (ctx.theme) document.documentElement.dataset.theme = ctx.theme; report(); };
