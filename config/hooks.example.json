@@ -1,0 +1,23 @@
+{
+  "description": "Capture project prompts and final answers locally for Discussion Tree.",
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{
+      "type": "command",
+      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "timeout": 5
+    }] }],
+    "Stop": [{ "hooks": [{
+      "type": "command",
+      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "timeout": 5
+    }] }],
+    "Interrupt": [{ "hooks": [{
+      "type": "command",
+      "command": "node \"<PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "commandWindows": "node \"<WINDOWS_PROJECT_ROOT>/plugins/thread-panel-probe/dist/capture.cjs\"",
+      "timeout": 3
+    }] }]
+  }
+}

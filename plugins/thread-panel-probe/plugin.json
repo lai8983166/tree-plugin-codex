@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "thread-panel-probe",
+  "version": "0.4.0",
+  "description": "Live discussion tree with model-classified relationships.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "讨论树 · Discussion Tree",
+        "shortDescription": "Turn conversations into a live model-organized tree",
+        "category": "Developer Tools",
+        "brandColor": "#147d64",
+        "defaultPrompt": ["Open Thread Panel Probe to test the conversation side panel."]
+      }
+    }
+  }
+}
