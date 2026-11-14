@@ -2,20 +2,22 @@ import { App } from '@modelcontextprotocol/ext-apps';
 import { layoutTree } from './tree-layout.js';
 import { createQaTabOpener } from './qa-tab.js';
 import styles from './panel.css';
-document.head.insertAdjacentHTML('beforeend', `<style>${styles}</style>`);
+import pickerStyles from './session-picker.css';
+document.head.insertAdjacentHTML('beforeend', `<style>${styles}${pickerStyles}</style>`);
 document.body.innerHTML = `<main>
-<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.4.1</span></h1></div><span id="connection" class="badge">连接中</span></header>
+<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.5.0</span></h1></div><span id="connection" class="badge">连接中</span></header>
 <div class="subhead"><span id="counts">每轮问答，成为一个节点</span><span id="sync">等待绑定会话</span></div>
+<div class="session-picker"><label for="session-picker">本地会话</label><select id="session-picker"><option value="">请选择会话</option></select><button id="refresh-sessions">刷新列表</button><button id="classify" disabled>启用模型归类（消耗额度）</button></div>
 <div class="workspace"><section class="map-section" aria-label="讨论树画布">
 <div class="toolbar"><div class="segmented"><button id="zoom-out" aria-label="缩小">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="放大">＋</button></div><button id="fit">适应画布</button><button id="expand">展开全部</button><button id="retry" hidden>重试失败节点</button></div>
 <div id="viewport" tabindex="0" aria-label="可滚动的树形图"><div id="extent"><div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="nodes"></div></div></div></div>
 <div id="empty">正在等待会话数据…</div><footer><span class="dot"></span>新问答自动加入 · 点击节点在标签页打开完整问答</footer>
 </section></div>
 <p id="navigation-status" role="status">问答从本地读取；同一节点使用同一文件标签页，打开不调用模型。</p>
-<details class="diagnostics"><summary>连接与模型说明</summary><p>每 2 秒读取新问答。完成后通过本机已登录的 Codex 模型归类，会使用账号额度。失败节点等待手动重试；待归类节点的虚线位置不代表模型关系。</p><pre id="diagnostic"></pre></details>
+<details class="diagnostics"><summary>连接与模型说明</summary><p>打开入口、选择会话和查看问答只读本地数据，不调用模型。每 2 秒读取新问答；只有明确点击“启用模型归类”或“重试失败节点”才启动模型，之后服务存活期间会自动归类该会话的新节点并消耗额度。未归类节点的虚线不代表模型关系。</p><pre id="diagnostic"></pre></details>
 </main>`;
 const $ = id => document.getElementById(id);
-const app = new App({ name: 'discussion-tree', version: '0.4.1' });
+const app = new App({ name: 'discussion-tree', version: '0.5.0' });
 let sessionId = null, revision = null, snapshot = null, connected = false, polling = false, timer;
 let selected = null, collapsed = new Set(), scale = 1, graph = null, fitted = false;
 const diag = {};
@@ -32,6 +34,38 @@ async function openNode(node) {
   }
 }
 const report = () => { $('diagnostic').textContent = JSON.stringify({ sessionId, ...diag }, null, 2); };
+function bindSession(id) {
+  if (sessionId === id) return;
+  sessionId = id || null; revision = null; selected = null; snapshot = null; collapsed.clear(); fitted = false; openRequest++;
+  $('nodes').replaceChildren(); $('edges').replaceChildren();
+  $('empty').hidden = false; $('empty').textContent = sessionId ? '正在读取本地问答…' : '请选择本地会话；打开面板不调用模型。';
+  $('counts').textContent = '每轮问答，成为一个节点';
+  $('classify').disabled = !sessionId; $('retry').hidden = true;
+  $('navigation-status').textContent = '点击问答节点可打开本地完整内容。';
+  $('session-picker').value = sessionId ?? ''; report(); poll();
+}
+async function refreshSessions() {
+  if (!connected) return;
+  $('refresh-sessions').disabled = true;
+  try {
+    const { sessions } = await call('list_captured_sessions', {});
+    const picker = $('session-picker'); picker.replaceChildren(new Option(sessions.length ? '请选择会话' : '暂无采集记录，请先启用项目 Hooks', ''));
+    for (const session of sessions) picker.add(new Option(`${session.label} · ${session.totalTurns} 轮 · ${session.sessionId.slice(0, 8)} · ${new Date(session.updatedAt).toLocaleString()}`, session.sessionId));
+    if (sessionId && !sessions.some(s => s.sessionId === sessionId)) picker.add(new Option(`当前会话 · ${sessionId.slice(0, 8)}`, sessionId));
+    picker.value = sessionId ?? '';
+    if (!sessionId) { $('empty').textContent = '请选择本地会话；打开面板不调用模型。'; $('sync').textContent = '仅读取本地数据'; }
+  } catch (error) { $('sync').textContent = `列表读取失败：${error.message}`; }
+  finally { $('refresh-sessions').disabled = false; }
+}
+$('session-picker').onchange = event => bindSession(event.target.value);
+$('refresh-sessions').onclick = refreshSessions;
+$('classify').onclick = async () => {
+  const session = sessionId; if (!session) return;
+  $('classify').disabled = true;
+  try { await call('retry_tree_classification', { session_id: session }); if (session === sessionId) $('navigation-status').textContent = '已启用本会话模型归类，将消耗账号额度。'; }
+  catch (error) { $('navigation-status').textContent = `启用失败：${error.message}`; }
+  finally { $('classify').disabled = !sessionId; }
+};
 async function call(name, args) {
   const result = await app.callServerTool({ name, arguments: args });
   if (result.isError || !result.structuredContent) throw new Error(result.content?.find(x => x.type === 'text')?.text || '工具没有返回有效结果');
@@ -116,10 +150,10 @@ async function poll() {
 app.ontoolresult = result => {
   const data = result.structuredContent;
   if (data?.probe !== 'thread-panel-probe') return;
-  if (sessionId !== data.sessionId) { sessionId = data.sessionId; revision = null; selected = null; snapshot = null; collapsed.clear(); fitted = false; }
-  $('sync').textContent = sessionId ? '同步中…' : '未绑定当前会话'; report(); poll();
+  bindSession(data.sessionId);
+  $('sync').textContent = sessionId ? '同步中…' : '请选择本地会话'; report(); refreshSessions(); poll();
 };
 app.onhostcontextchanged = ctx => { diag.displayMode = ctx.displayMode; if (ctx.theme) document.documentElement.dataset.theme = ctx.theme; report(); };
 app.onerror = error => { diag.bridgeError = String(error); report(); };
 if (window.parent === window) { $('connection').textContent = '预览模式'; $('empty').textContent = '请从 Codex 打开讨论树以连接真实问答。'; }
-else app.connect().then(() => { connected = true; $('connection').textContent = '已连接'; diag.displayMode = app.getHostContext()?.displayMode; report(); poll(); }).catch(error => { $('connection').textContent = '连接失败'; diag.error = error.message; report(); });
+else app.connect().then(() => { connected = true; $('connection').textContent = '已连接'; diag.displayMode = app.getHostContext()?.displayMode; report(); refreshSessions(); poll(); }).catch(error => { $('connection').textContent = '连接失败'; diag.error = error.message; report(); });

@@ -3,6 +3,17 @@ import { mkdir, readFile, readdir, realpath, rename, writeFile, access } from 'n
 import { join, resolve } from 'node:path';
 
 export const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+export async function listCapturedSessions(root) {
+  let entries;
+  try { entries = await readdir(join(resolve(root), '.probe', 'events'), { withFileTypes: true }); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  const sessions = await Promise.all(entries.filter(e => e.isDirectory() && validId(e.name)).map(async e => {
+    const snapshot = await readSnapshot(root, e.name, { limit: 1 });
+    return { sessionId: e.name, totalTurns: snapshot.totalTurns, updatedAt: snapshot.lastEventAt,
+      label: snapshot.turns[0]?.prompts.filter(Boolean).join(' ').slice(0, 60) || '未捕获提问' };
+  }));
+  return sessions.filter(s => s.totalTurns > 0).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
 export async function captureEvent(root, input) {
   const event = input.hook_event_name;
   if (!['UserPromptSubmit', 'Stop', 'Interrupt'].includes(event)) return { ignored: 'event' };

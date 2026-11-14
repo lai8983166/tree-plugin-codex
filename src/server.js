@@ -1,12 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { readSnapshot } from './capture-store.js';
+import { readSnapshot, listCapturedSessions } from './capture-store.js';
 import { readTree, getTurn, retryFailed, createCoordinator } from './tree-store.js';
 import { prepareQaFile } from './qa-file.js';
 
-const uri = 'ui://thread-panel-probe/v4.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.4.1' });
+const uri = 'ui://thread-panel-probe/v5.html';
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.5.0' });
 const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
 const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, close() {} } : createCoordinator(root);
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -30,14 +30,18 @@ server.registerResource('probe-panel', uri, { mimeType: 'text/html;profile=mcp-a
 
 server.registerTool('open_thread_panel_probe', {
   title: '讨论树',
-  description: 'Open the discussion tree and enable automatic model classification for this session. Pass the current Codex session ID as session_id; never choose another session automatically. Uses the locally signed-in Codex account to classify captured Q&A and consumes model usage.',
-  inputSchema: { session_id: sessionId.optional() }, annotations: { ...annotations, readOnlyHint: false },
-  _meta: { ui, 'openai/ui': { entrypoints: [{ type: 'thread' }] } }
+  description: 'Open the discussion tree without calling a model. With no session_id, show a local session picker. Never choose another session automatically.',
+  inputSchema: { session_id: sessionId.optional() }, annotations,
+  _meta: { ui, 'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] } }
 }, async ({ session_id }) => {
-  if (session_id) coordinator.track(session_id);
-  return { content: [{ type: 'text', text: 'Discussion tree opened. Use Open app in tab to view beside the chat. Completed Q&A is classified automatically with the locally signed-in Codex model; click nodes for complete Q&A.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.4.1', requestedEntrypoint: 'thread', sessionId: session_id ?? null } };
+  return { content: [{ type: 'text', text: 'Discussion tree opened without a model call. Choose a captured session to view saved nodes and Q&A.' }],
+    structuredContent: { probe: 'thread-panel-probe', version: '0.5.0', requestedEntrypoint: session_id ? 'thread' : 'global', sessionId: session_id ?? null } };
 });
+
+server.registerTool('list_captured_sessions', {
+  title: 'List local captured sessions', description: 'List captured sessions in this project for explicit user selection; never calls a model.',
+  inputSchema: {}, annotations, _meta: { ui: { visibility: ['app'] } }
+}, async () => ({ content: [{ type: 'text', text: 'Local sessions loaded' }], structuredContent: { sessions: await listCapturedSessions(root) } }));
 
 server.registerTool('read_discussion_tree', {
   title: 'Read discussion tree', description: 'Read node titles, model-selected relationships, and classification status for the bound session.',

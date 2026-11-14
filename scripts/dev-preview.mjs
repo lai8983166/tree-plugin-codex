@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { readTree, getTurn } from '../src/tree-store.js';
+import { listCapturedSessions } from '../src/capture-store.js';
 const bundle = await build({ entryPoints: ['scripts/preview-host.js'], bundle: true, format: 'esm', write: false });
 const hostScript = bundle.outputFiles[0].text;
 const root = process.cwd();
@@ -15,6 +16,7 @@ createServer(async (req, res) => {
       const { name, arguments: args } = JSON.parse(raw);
       let data;
       if (name === 'read_discussion_tree') data = await readTree(root, args.session_id);
+      else if (name === 'list_captured_sessions') data = { sessions: await listCapturedSessions(root) };
       else if (name === 'get_turn_detail') data = { turn: await getTurn(root, args.session_id, args.turn_id) };
       else throw new Error('Read-only preview');
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ content: [], structuredContent: data }));

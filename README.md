@@ -1,6 +1,6 @@
 # 讨论树 · Discussion Tree
 
-本地 stdio MCP App：采集项目内的新问答，由模型判断节点关系，在会话侧栏显示讨论树。当前版本为 0.4.1。
+本地 stdio MCP App：采集项目内的新问答，由模型判断节点关系，在会话侧栏显示讨论树。当前版本为 0.5.0。
 
 ## 功能
 
@@ -27,7 +27,7 @@ codex plugin add thread-panel-probe@tree-panel-lab
 
 将 `config/config.example.toml` 和 `config/hooks.example.json` 分别复制到本地 `.codex/config.toml`、`.codex/hooks.json`，替换 Hooks 中的路径占位符。已有配置请合并而非覆盖。使用 WSL 时，普通 `command` 应指向 WSL 可访问的路径。
 
-重启桌面应用，审核启用项目 Hooks。在本项目会话中打开讨论树，将应用卡片通过“在标签页中打开应用”放到侧栏。入口工具为 `open_thread_panel_probe`，需绑定当前会话的 `session_id`。
+重启桌面应用，审核启用项目 Hooks。点击宿主侧栏中的“讨论树”全局应用入口，在面板的“本地会话”列表中选择已采集的会话，即可浏览；无需发送消息或调用模型。全局入口由宿主以全屏应用展示，区别于会话右侧面板。列表为空时先启用 Hooks 并完成一轮问答，再点击“刷新列表”。保留会话内入口工具为 `open_thread_panel_probe`，可显式绑定当前会话的 `session_id`。
 
 ## 数据与模型使用
 
@@ -35,7 +35,7 @@ codex plugin add thread-panel-probe@tree-panel-lab
 
 本地数据位于被 Git 忽略的 `.probe/`：`events/` 保存原始问答，`trees/` 保存归类状态，`qa/` 保存完整问答文件。
 
-节点归类通过已登录的 Codex CLI 调用模型，问答及候选摘要会发送给模型服务并使用账号额度。查看本地问答文件不调用模型。分类失败不会无限自动重试。
+打开面板、选择会话、轮询新节点及打开问答均不会启动模型。只有点击“启用模型归类（消耗额度）”或“重试失败节点”后，才在服务存活期间自动归类选定会话的新节点；重启服务后需重新启用。节点归类通过已登录的 Codex CLI 调用模型，问答及候选摘要会发送给模型服务并使用账号额度。查看本地问答文件不调用模型。分类失败不会无限自动重试。
 
 - `TREE_CODEX_CLI`：可选的 Codex CLI JavaScript 入口路径。Windows 默认使用当前用户的 npm 全局安装位置。
 - `TREE_MODEL`：可选分类模型；未设置时使用 CLI 默认模型。
