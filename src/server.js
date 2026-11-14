@@ -6,7 +6,7 @@ import { readTree, getTurn, retryFailed, createCoordinator } from './tree-store.
 import { prepareQaFile } from './qa-file.js';
 
 const uri = 'ui://thread-panel-probe/v4.html';
-const server = new McpServer({ name: 'thread-panel-probe', version: '0.4.0' });
+const server = new McpServer({ name: 'thread-panel-probe', version: '0.4.1' });
 const root = process.env.PROBE_PROJECT_ROOT || PROBE_PROJECT_ROOT;
 const coordinator = process.env.TREE_MODEL_DISABLED === '1' ? { track() {}, close() {} } : createCoordinator(root);
 const sessionId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -36,7 +36,7 @@ server.registerTool('open_thread_panel_probe', {
 }, async ({ session_id }) => {
   if (session_id) coordinator.track(session_id);
   return { content: [{ type: 'text', text: 'Discussion tree opened. Use Open app in tab to view beside the chat. Completed Q&A is classified automatically with the locally signed-in Codex model; click nodes for complete Q&A.' }],
-    structuredContent: { probe: 'thread-panel-probe', version: '0.4.0', requestedEntrypoint: 'thread', sessionId: session_id ?? null } };
+    structuredContent: { probe: 'thread-panel-probe', version: '0.4.1', requestedEntrypoint: 'thread', sessionId: session_id ?? null } };
 });
 
 server.registerTool('read_discussion_tree', {

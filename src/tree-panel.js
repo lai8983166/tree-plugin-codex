@@ -4,7 +4,7 @@ import { createQaTabOpener } from './qa-tab.js';
 import styles from './panel.css';
 document.head.insertAdjacentHTML('beforeend', `<style>${styles}</style>`);
 document.body.innerHTML = `<main>
-<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.4.0</span></h1></div><span id="connection" class="badge">连接中</span></header>
+<header><div><div class="eyebrow">DISCUSSION ATLAS</div><h1>讨论树 <span>0.4.1</span></h1></div><span id="connection" class="badge">连接中</span></header>
 <div class="subhead"><span id="counts">每轮问答，成为一个节点</span><span id="sync">等待绑定会话</span></div>
 <div class="workspace"><section class="map-section" aria-label="讨论树画布">
 <div class="toolbar"><div class="segmented"><button id="zoom-out" aria-label="缩小">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="放大">＋</button></div><button id="fit">适应画布</button><button id="expand">展开全部</button><button id="retry" hidden>重试失败节点</button></div>
@@ -15,7 +15,7 @@ document.body.innerHTML = `<main>
 <details class="diagnostics"><summary>连接与模型说明</summary><p>每 2 秒读取新问答。完成后通过本机已登录的 Codex 模型归类，会使用账号额度。失败节点等待手动重试；待归类节点的虚线位置不代表模型关系。</p><pre id="diagnostic"></pre></details>
 </main>`;
 const $ = id => document.getElementById(id);
-const app = new App({ name: 'discussion-tree', version: '0.4.0' });
+const app = new App({ name: 'discussion-tree', version: '0.4.1' });
 let sessionId = null, revision = null, snapshot = null, connected = false, polling = false, timer;
 let selected = null, collapsed = new Set(), scale = 1, graph = null, fitted = false;
 const diag = {};

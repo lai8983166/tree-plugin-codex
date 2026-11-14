@@ -7,11 +7,20 @@ import { captureEvent } from '../src/capture-store.js';
 import { prepareQaFile } from '../src/qa-file.js';
 import { createQaTabOpener } from '../src/qa-tab.js';
 
-test('saved Q&A: full literal text, stable path, no rewrite, updates and session isolation', async () => {
+test('saved Q&A: complete Markdown, stable path, no rewrite, updates and session isolation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'qa-file-'));
   try {
-    const question = '测试 ``` <script>alert(1)</script>';
-    const answer = '苹果\n' + '完整原文'.repeat(20000) + '\n````\n![image](https://example.com/x)';
+    const question = '**展示测试**：请保留所有格式。';
+    const answer = [
+      '```python\ndef greet():\n    return "你好"\n```',
+      '```javascript\nconst square = x => x * x;\n```',
+      '![image](https://example.com/image.png)',
+      '| 名称 | 值 |\n| --- | --- |\n| 测试 | 1 |',
+      '$$\nF_n = F_{n-1} + F_{n-2}\n$$',
+      '行内公式 $x^2$、**加粗**、*斜体*、`代码`。',
+      '> 引用\n\n- 项目一\n- 项目二',
+      '完整原文'.repeat(20000)
+    ].join('\n\n');
     const event = { cwd: root, session_id: 'session-a', turn_id: 'apple' };
     await captureEvent(root, { ...event, hook_event_name: 'UserPromptSubmit', prompt: question });
     const waiting = await prepareQaFile(root, 'session-a', 'apple');
@@ -21,7 +30,8 @@ test('saved Q&A: full literal text, stable path, no rewrite, updates and session
     assert.equal(file.path, waiting.path);
     const content = await readFile(file.path, 'utf8');
     assert.ok(content.includes(question)); assert.ok(content.includes(answer));
-    assert.ok(content.includes('`````text\n' + answer + '\n`````'));
+    assert.ok(content.includes('## 提问\n\n' + question + '\n\n## 回答\n\n' + answer + '\n\n---'));
+    assert.ok(!content.includes('```text'));
     const modified = (await stat(file.path)).mtimeMs;
     assert.deepEqual(await prepareQaFile(root, 'session-a', 'apple'), file);
     assert.equal((await stat(file.path)).mtimeMs, modified);

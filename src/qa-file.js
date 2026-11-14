@@ -3,13 +3,6 @@ import { resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readSnapshot, validId } from './capture-store.js';
 
-// Keep captured text literal: embedded HTML, links and images never execute.
-export function literalBlock(text) {
-  const runs = String(text).match(/`+/g) ?? [];
-  const fence = '`'.repeat(Math.max(3, ...runs.map(run => run.length + 1)));
-  return `${fence}text\n${text}\n${fence}`;
-}
-
 export async function prepareQaFile(root, sessionId, turnId) {
   if (!validId(sessionId) || !validId(turnId)) throw new Error('Invalid session or turn ID');
   const snapshot = await readSnapshot(root, sessionId, { limit: null });
@@ -17,7 +10,9 @@ export async function prepareQaFile(root, sessionId, turnId) {
   if (!turn) throw new Error('当前会话找不到该轮问答');
   const question = turn.prompts.join('\n\n');
   const answer = turn.answer ?? (turn.status === 'interrupted' ? '（本轮已中断，未捕获最终回答）' : '（尚未捕获最终回答，请完成后再次点击节点）');
-  const content = `# 完整问答\n\n本地保存的原文 · 打开此文件不调用模型\n\n## 提问\n\n${literalBlock(question)}\n\n## 回答\n\n${literalBlock(answer)}\n\n---\n\n会话：${sessionId}\n\n轮次：${turnId}\n\n状态：${turn.status}\n\n更新时间：${turn.updatedAt}\n`;
+  // Preserve Markdown rather than wrapping the entire exchange in a code block.
+  // The host's Markdown preview handles highlighting, images, tables and math.
+  const content = `# 完整问答\n\n本地保存的 Markdown · 打开此文件不调用模型\n\n## 提问\n\n${question}\n\n## 回答\n\n${answer}\n\n---\n\n会话：${sessionId}\n\n轮次：${turnId}\n\n状态：${turn.status}\n\n更新时间：${turn.updatedAt}\n`;
   const dir = resolve(root, '.probe', 'qa', sessionId);
   const path = join(dir, `${turnId}.md`);
   await mkdir(dir, { recursive: true });
